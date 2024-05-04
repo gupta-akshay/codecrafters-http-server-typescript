@@ -1,5 +1,7 @@
 import * as net from 'node:net';
 
+const ECHO_REGEX = /^\/echo\/(.*)$/;
+
 const server = net.createServer((socket) => {
     socket.on('data', data => {
         const dataReceived = data.toString();
@@ -8,9 +10,15 @@ const server = net.createServer((socket) => {
         const [method, path, httpVersion] = firstLine.split(' ');
         if (path === '/') {
             socket.write('HTTP/1.1 200 OK\r\n\r\n');
-            return;
+        } else if (path.startsWith('/echo/')) {
+            const echo = path.match(ECHO_REGEX);
+            if (echo && echo.length) {
+                const echoStr = echo[1];
+                socket.write(`HTTP/1.1 200 OK\r\nContent-Type: text/plain\nContent-Length: ${echoStr.length}\n\r\n${echoStr}`);
+            }
+        } else {
+            socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
         }
-        socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
         socket.end();
     });
 });
