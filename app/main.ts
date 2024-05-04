@@ -2,8 +2,15 @@ import * as net from 'node:net';
 
 const server = net.createServer((socket) => {
     socket.on('data', data => {
-        console.log(`Data received: \n`, data.toString());
-        socket.write('HTTP/1.1 200 OK\r\n\r\n');
+        const dataReceived = data.toString();
+        console.log(`Data received: \n`, dataReceived);
+        const [firstLine] = dataReceived.split('\r\n');
+        const [method, path, httpVersion] = firstLine.split(' ');
+        if (path === '/') {
+            socket.write('HTTP/1.1 200 OK\r\n\r\n');
+            return;
+        }
+        socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
         socket.end();
     });
 });
