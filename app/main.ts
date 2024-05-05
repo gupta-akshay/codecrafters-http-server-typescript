@@ -1,24 +1,16 @@
 import * as net from "node:net";
 import { promises as fs } from "node:fs";
 import * as nodePath from "node:path";
-
-interface RequestLine {
-  method: string;
-  path: string;
-  httpVersion: string;
-}
-
-interface Headers {
-  [key: string]: string;
-}
-
-interface ResponseBodyArgs {
-  httpVersion: string;
-  statusText: string;
-  statusCode: number;
-  "Content-Type": string;
-  body: string | Buffer;
-}
+import {
+  ContentType,
+  HttpHeaders,
+  HttpMethod,
+  HttpStatusCode,
+  HttpStatusText,
+  HttpVersion,
+  RequestLine,
+  ResponseBodyArgs,
+} from "./types";
 
 const ECHO_REGEX = /^\/echo\/(.*)$/;
 const FILE_REGEX = /^\/files\/(.+)$/;
@@ -31,31 +23,37 @@ const directoryPath = args[0] === "--directory" && args[1] ? args[1] : "";
 const extractMethodAndPath = (text: string): RequestLine => {
   const [firstLine] = text.split("\r\n");
   const [method, path, httpVersion] = firstLine.split(" ");
-  return { method, path, httpVersion };
+  return {
+    method: method as HttpMethod,
+    path,
+    httpVersion: httpVersion as HttpVersion,
+  };
 };
 
 // Parses headers from the request and combines them with the request line data
-const parseHeaders = (data: string): Headers & RequestLine => {
+const parseHeaders = (data: string): HttpHeaders & RequestLine => {
   const [firstLine, ...rest] = data.split("\r\n");
-  const headers: Headers = rest
-    .filter(line => line.includes(":"))
-    .reduce((acc: Headers, line) => {
+  const headers: HttpHeaders = rest
+    .filter((line) => line.includes(":"))
+    .reduce((acc: HttpHeaders, line) => {
+      // Ensure the initial value matches the expected type
       const [key, value] = line.split(":");
       acc[key.trim()] = value.trim();
       return acc;
-    }, {});
+    }, {} as HttpHeaders); // Explicitly type the initial value as HttpHeaders
   return { ...headers, ...extractMethodAndPath(data) };
 };
-
 // Creates a response body string from given parameters
 const createResponseBody = ({
   httpVersion,
   statusText,
   statusCode,
-  "Content-Type": contentType,
+  contentType,
   body,
 }: ResponseBodyArgs): string => {
-  const headers = `Content-Type: ${contentType}\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n`;
+  const headers = `Content-Type: ${contentType}\r\nContent-Length: ${Buffer.byteLength(
+    body
+  )}\r\n\r\n`;
   return `${httpVersion} ${statusCode} ${statusText}\r\n${headers}${body}`;
 };
 
@@ -71,16 +69,20 @@ const server = net.createServer((socket) => {
     const { method, path, httpVersion } = headers;
 
     // Handle POST requests to save files
-    if (method === 'POST' && FILE_REGEX.test(path)) {
+    if (method === HttpMethod.POST && FILE_REGEX.test(path)) {
       const match = FILE_REGEX.exec(path);
       if (match) {
         const filePath = nodePath.join(directoryPath, match[1]);
         try {
           // Write file and send a 201 Created response
-          await fs.writeFile(filePath, dataReceived.split('\r\n\r\n')[1]);
-          socket.write(`${httpVersion} 201 Created\r\n\r\n`);
+          await fs.writeFile(filePath, dataReceived.split("\r\n\r\n")[1]);
+          socket.write(
+            `${httpVersion} ${HttpStatusCode.CREATED} ${HttpStatusText.CREATED}\r\n\r\n`
+          );
         } catch (error) {
-          socket.write(`${httpVersion} 500 Internal Server Error\r\n\r\n`);
+          socket.write(
+            `${httpVersion} ${HttpStatusCode.INTERNAL_SERVER_ERROR} ${HttpStatusText.INTERNAL_SERVER_ERROR}\r\n\r\n`
+          );
         }
         return;
       }
@@ -89,17 +91,21 @@ const server = net.createServer((socket) => {
     // Handle requests based on path
     if (path === "/") {
       socket.write("HTTP/1.1 200 OK\r\n\r\n");
-    } else if (ECHO_REGEX.test(path)) {
-      const match = ECHO_REGEX.exec(path);
+    }
+    
+    if (ECHO_REGEX.test(path)) {
+      const responseBody = path.replace(ECHO_REGEX, "$1");
       const response = createResponseBody({
         httpVersion,
-        statusCode: 200,
-        statusText: "OK",
-        "Content-Type": "text/plain",
-        body: match ? match[1] : "",
+        statusCode: HttpStatusCode.OK,
+        statusText: HttpStatusText.OK,
+        contentType: ContentType.TEXT_PLAIN,
+        body: responseBody,
       });
-      socket.write(`${response}\r\n`);
-    } else if (FILE_REGEX.test(path)) {
+      socket.write(response);
+    }
+    
+    if (FILE_REGEX.test(path)) {
       const match = FILE_REGEX.exec(path);
       if (match) {
         try {
@@ -108,9 +114,9 @@ const server = net.createServer((socket) => {
           const fileContents = await fs.readFile(filePath);
           const response = createResponseBody({
             httpVersion,
-            statusCode: 200,
-            statusText: "OK",
-            "Content-Type": "application/octet-stream",
+            statusCode: HttpStatusCode.OK,
+            statusText: HttpStatusText.OK,
+            contentType: ContentType.APPLICATION_OCTET_STREAM,
             body: fileContents,
           });
           socket.write(response);
@@ -118,18 +124,20 @@ const server = net.createServer((socket) => {
           socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
         }
       }
-    } else if (path === "/user-agent") {
+    }
+    
+    if (path === "/user-agent") {
       const response = createResponseBody({
         httpVersion,
-        statusCode: 200,
-        statusText: "OK",
-        "Content-Type": "text/plain",
+        statusCode: HttpStatusCode.OK,
+        statusText: HttpStatusText.OK,
+        contentType: ContentType.TEXT_PLAIN,
         body: headers["User-Agent"] || "Unknown",
       });
-      socket.write(`${response}\r\n`);
-    } else {
-      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+      socket.write(response);
     }
+
+    socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
     socket.end();
   });
 
