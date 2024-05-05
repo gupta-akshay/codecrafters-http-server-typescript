@@ -60,9 +60,7 @@ const createResponseBody = ({
   "Content-Type": contentType,
   body,
 }: ResponseBodyArgs): string => {
-  const headers = `Content-Type: ${contentType}\r\nContent-Length: ${Buffer.byteLength(
-    body
-  )}\r\n\r\n`;
+  const headers = `Content-Type: ${contentType}\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n`;
   return `${httpVersion} ${statusCode} ${statusText}\r\n${headers}${body}`;
 };
 
@@ -74,8 +72,22 @@ const server = net.createServer((socket) => {
     const dataReceived = data.toString();
     console.log(`Received data: ${dataReceived}`);
     const headers = parseHeaders(dataReceived);
+    
+    const { method, path, httpVersion } = headers;
 
-    const { path, httpVersion } = headers;
+    if (method === 'POST' && FILE_REGEX.test(path)) {
+      const match = FILE_REGEX.exec(path);
+      if (match) {
+        const filePath = nodePath.join(directoryPath, match[1]);
+        try {
+          await fs.writeFile(filePath, dataReceived.split('\r\n\r\n')[1]);
+          socket.write(`${httpVersion} 201 Created\r\n\r\n`);
+        } catch (e) {
+          socket.write(`${httpVersion} 500 Internal Server Error\r\n\r\n`);
+        }
+        return;
+      }
+    }
 
     if (path === "/") {
       socket.write("HTTP/1.1 200 OK\r\n\r\n");
