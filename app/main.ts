@@ -23,36 +23,31 @@ interface ResponseBodyArgs {
 const ECHO_REGEX = /^\/echo\/(.*)$/;
 const FILE_REGEX = /^\/files\/(.+)$/;
 
-// Command-line arguments handling
+// Handling command-line arguments to get the directory path
 const args = process.argv.slice(2);
-let directoryPath = "";
-if (args[0] === "--directory" && args[1]) {
-  directoryPath = args[1];
-}
+const directoryPath = args[0] === "--directory" && args[1] ? args[1] : "";
 
+// Extracts method, path, and HTTP version from the request line
 const extractMethodAndPath = (text: string): RequestLine => {
-  const [firstline] = text.split("\r\n");
-  const [method, path, httpVersion] = firstline.split(" ");
-  return {
-    method,
-    path,
-    httpVersion,
-  };
+  const [firstLine] = text.split("\r\n");
+  const [method, path, httpVersion] = firstLine.split(" ");
+  return { method, path, httpVersion };
 };
 
+// Parses headers from the request and combines them with the request line data
 const parseHeaders = (data: string): Headers & RequestLine => {
   const [firstLine, ...rest] = data.split("\r\n");
   const headers: Headers = rest
-    .filter((pair) => pair.includes(":"))
-    .reduce((acc: Headers, cur) => {
-      const [key, value] = cur.split(":");
+    .filter(line => line.includes(":"))
+    .reduce((acc: Headers, line) => {
+      const [key, value] = line.split(":");
       acc[key.trim()] = value.trim();
       return acc;
     }, {});
-
   return { ...headers, ...extractMethodAndPath(data) };
 };
 
+// Creates a response body string from given parameters
 const createResponseBody = ({
   httpVersion,
   statusText,
@@ -64,7 +59,7 @@ const createResponseBody = ({
   return `${httpVersion} ${statusCode} ${statusText}\r\n${headers}${body}`;
 };
 
-// Create the server using Node's net module
+// Main server logic using Node's net module
 const server = net.createServer((socket) => {
   console.log("Connection established");
 
@@ -72,23 +67,26 @@ const server = net.createServer((socket) => {
     const dataReceived = data.toString();
     console.log(`Received data: ${dataReceived}`);
     const headers = parseHeaders(dataReceived);
-    
+
     const { method, path, httpVersion } = headers;
 
+    // Handle POST requests to save files
     if (method === 'POST' && FILE_REGEX.test(path)) {
       const match = FILE_REGEX.exec(path);
       if (match) {
         const filePath = nodePath.join(directoryPath, match[1]);
         try {
+          // Write file and send a 201 Created response
           await fs.writeFile(filePath, dataReceived.split('\r\n\r\n')[1]);
           socket.write(`${httpVersion} 201 Created\r\n\r\n`);
-        } catch (e) {
+        } catch (error) {
           socket.write(`${httpVersion} 500 Internal Server Error\r\n\r\n`);
         }
         return;
       }
     }
 
+    // Handle requests based on path
     if (path === "/") {
       socket.write("HTTP/1.1 200 OK\r\n\r\n");
     } else if (ECHO_REGEX.test(path)) {
@@ -105,6 +103,7 @@ const server = net.createServer((socket) => {
       const match = FILE_REGEX.exec(path);
       if (match) {
         try {
+          // Read file and send it with a 200 OK response
           const filePath = nodePath.join(directoryPath, match[1]);
           const fileContents = await fs.readFile(filePath);
           const response = createResponseBody({
@@ -115,7 +114,7 @@ const server = net.createServer((socket) => {
             body: fileContents,
           });
           socket.write(response);
-        } catch (e) {
+        } catch {
           socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
         }
       }
