@@ -44,11 +44,6 @@ const parseHeaders = (data: string): Headers & RequestLine => {
   return { ...headers, ...extractMethodAndPath(data) };
 };
 
-/**
- * Creates a formatted HTTP response string.
- * @param {object} args - Contains response details including HTTP version, status, headers, and body.
- * @returns {string} Formatted HTTP response string.
- */
 const createResponseBody = ({
   httpVersion, statusText, statusCode, "Content-Type": contentType, body
 }: ResponseBodyArgs): string => {
@@ -57,21 +52,18 @@ const createResponseBody = ({
 
 // Create the server using Node's net module
 const server = net.createServer((socket) => {
+  console.log('Connection established');
+
   socket.on("data", (data) => {
     const dataReceived = data.toString();
+    console.log(`Received data: ${dataReceived}`);
     const headers = parseHeaders(dataReceived);
-    console.log('headers: ', headers);
 
     const { path, httpVersion } = headers;
 
-    // Route for root path
     if (path === '/') {
       socket.write('HTTP/1.1 200 OK\r\n\r\n');
-      return;
-    }
-
-    // Route for echo service
-    if (ECHO_REGEX.test(path)) {
+    } else if (ECHO_REGEX.test(path)) {
       const match = ECHO_REGEX.exec(path);
       const response = createResponseBody({
         httpVersion,
@@ -81,11 +73,7 @@ const server = net.createServer((socket) => {
         body: match ? match[1] : '',
       });
       socket.write(`${response}\r\n`);
-      return;
-    }
-
-    // Route for returning the User-Agent header
-    if (path === '/user-agent') {
+    } else if (path === '/user-agent') {
       const response = createResponseBody({
         httpVersion,
         statusCode: 200,
@@ -94,12 +82,19 @@ const server = net.createServer((socket) => {
         body: headers['User-Agent'] || 'Unknown',
       });
       socket.write(`${response}\r\n`);
-      return;
+    } else {
+      socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     }
-
-    // Default 404 Not Found Response
-    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     socket.end();
+  });
+
+  socket.on('end', () => {
+    console.log('Connection ended');
+  });
+
+  socket.on('error', (err) => {
+    console.error(`Error: ${err}`);
+    socket.end('HTTP/1.1 500 Internal Server Error\r\n\r\n');
   });
 });
 
