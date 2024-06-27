@@ -57,13 +57,15 @@ const createResponseBody = ({
   const preHeaders = `${httpVersion} ${statusCode} ${statusText}`;
   const headers = [
     `Content-Type: ${contentType}`,
-    `Content-Length: ${contentEncoding === 'gzip' ? body.length : Buffer.byteLength(body)}`
+    `Content-Length: ${
+      contentEncoding === "gzip" ? body.length : Buffer.byteLength(body)
+    }`,
   ];
-  if (contentEncoding === 'gzip') {
+  if (contentEncoding === "gzip") {
     headers.push(`Content-Encoding: ${contentEncoding}`);
-    return `${preHeaders}\r\n${headers.join('\r\n')}\r\n\r\n`;
+    return `${preHeaders}\r\n${headers.join("\r\n")}\r\n\r\n`;
   }
-  return `${preHeaders}\r\n${headers.join('\r\n')}\r\n\r\n${body}`;
+  return `${preHeaders}\r\n${headers.join("\r\n")}\r\n\r\n${body}`;
 };
 
 // Main server logic using Node's net module
@@ -79,11 +81,13 @@ const server = net.createServer((socket) => {
       method,
       path,
       httpVersion,
-      'Accept-Encoding': acceptEncoding
+      "Accept-Encoding": acceptEncoding,
     } = headers;
 
     const incomingEncodings =
-      acceptEncoding?.split(",").map(encoding => encoding.trim().toLowerCase()) || [];
+      acceptEncoding
+        ?.split(",")
+        .map((encoding) => encoding.trim().toLowerCase()) || [];
 
     // Handle POST requests to save files
     if (method === HttpMethod.POST && FILE_REGEX.test(path)) {
@@ -109,11 +113,11 @@ const server = net.createServer((socket) => {
     if (path === "/") {
       socket.write("HTTP/1.1 200 OK\r\n\r\n");
     }
-    
+
     if (ECHO_REGEX.test(path)) {
       const responseBody = path.replace(ECHO_REGEX, "$1");
       if (incomingEncodings.includes("gzip")) {
-        const buffer = Buffer.from(responseBody, 'utf8');
+        const buffer = Buffer.from(responseBody, "utf8");
         const compressedBody = zlib.gzipSync(buffer);
         const response = createResponseBody({
           httpVersion,
@@ -121,7 +125,7 @@ const server = net.createServer((socket) => {
           statusText: HttpStatusText.OK,
           contentType: ContentType.TEXT_PLAIN,
           body: compressedBody,
-          contentEncoding: 'gzip',
+          contentEncoding: "gzip",
         });
         socket.write(response);
         socket.write(compressedBody);
@@ -137,7 +141,7 @@ const server = net.createServer((socket) => {
       }
       socket.end();
     }
-    
+
     if (FILE_REGEX.test(path)) {
       const match = FILE_REGEX.exec(path);
       if (match) {
@@ -158,7 +162,7 @@ const server = net.createServer((socket) => {
         }
       }
     }
-    
+
     if (path === "/user-agent") {
       const response = createResponseBody({
         httpVersion,
