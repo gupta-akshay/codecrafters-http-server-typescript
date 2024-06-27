@@ -80,6 +80,9 @@ const server = net.createServer((socket) => {
       'Accept-Encoding': acceptEncoding
     } = headers;
 
+    const incomingEncodings =
+      acceptEncoding?.split(",").map(encoding => encoding.trim().toLowerCase()) || [];
+
     // Handle POST requests to save files
     if (method === HttpMethod.POST && FILE_REGEX.test(path)) {
       const match = FILE_REGEX.exec(path);
@@ -114,7 +117,7 @@ const server = net.createServer((socket) => {
         contentType: ContentType.TEXT_PLAIN,
         body: responseBody,
         contentEncoding:
-          acceptEncoding && acceptEncoding.includes("gzip") ? "gzip" : undefined,
+          incomingEncodings.includes("gzip") ? "gzip" : undefined,
       });
       socket.write(response);
     }
