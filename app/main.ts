@@ -1,6 +1,7 @@
 import * as net from "node:net";
 import { promises as fs } from "node:fs";
 import * as nodePath from "node:path";
+import * as zlib from "node:zlib";
 import {
   ContentType,
   HttpHeaders,
@@ -53,14 +54,15 @@ const createResponseBody = ({
   body,
   contentEncoding,
 }: ResponseBodyArgs): string => {
+  const preHeaders = `${httpVersion} ${statusCode} ${statusText}`;
   const headers = [
     `Content-Type: ${contentType}`,
-    `Content-Length: ${Buffer.byteLength(body)}`
-  ]
-  if (contentEncoding) {
+    `Content-Length: ${contentEncoding === 'gzip' ? body.length : Buffer.byteLength(body)}`
+  ];
+  if (contentEncoding === 'gzip') {
     headers.push(`Content-Encoding: ${contentEncoding}`);
+    return `${preHeaders}\r\n${headers.join('\r\n')}\r\n\r\n`;
   }
-  const preHeaders = `${httpVersion} ${statusCode} ${statusText}`;
   return `${preHeaders}\r\n${headers.join('\r\n')}\r\n\r\n${body}`;
 };
 
@@ -110,16 +112,30 @@ const server = net.createServer((socket) => {
     
     if (ECHO_REGEX.test(path)) {
       const responseBody = path.replace(ECHO_REGEX, "$1");
-      const response = createResponseBody({
-        httpVersion,
-        statusCode: HttpStatusCode.OK,
-        statusText: HttpStatusText.OK,
-        contentType: ContentType.TEXT_PLAIN,
-        body: responseBody,
-        contentEncoding:
-          incomingEncodings.includes("gzip") ? "gzip" : undefined,
-      });
-      socket.write(response);
+      if (incomingEncodings.includes("gzip")) {
+        const buffer = Buffer.from(responseBody, 'utf8');
+        const compressedBody = zlib.gzipSync(buffer);
+        const response = createResponseBody({
+          httpVersion,
+          statusCode: HttpStatusCode.OK,
+          statusText: HttpStatusText.OK,
+          contentType: ContentType.TEXT_PLAIN,
+          body: compressedBody,
+          contentEncoding: 'gzip',
+        });
+        socket.write(response);
+        socket.write(compressedBody);
+      } else {
+        const response = createResponseBody({
+          httpVersion,
+          statusCode: HttpStatusCode.OK,
+          statusText: HttpStatusText.OK,
+          contentType: ContentType.TEXT_PLAIN,
+          body: responseBody,
+        });
+        socket.write(response);
+      }
+      socket.end();
     }
     
     if (FILE_REGEX.test(path)) {
