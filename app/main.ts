@@ -43,6 +43,7 @@ const parseHeaders = (data: string): HttpHeaders & RequestLine => {
     }, {} as HttpHeaders); // Explicitly type the initial value as HttpHeaders
   return { ...headers, ...extractMethodAndPath(data) };
 };
+
 // Creates a response body string from given parameters
 const createResponseBody = ({
   httpVersion,
@@ -50,11 +51,17 @@ const createResponseBody = ({
   statusCode,
   contentType,
   body,
+  contentEncoding,
 }: ResponseBodyArgs): string => {
-  const headers = `Content-Type: ${contentType}\r\nContent-Length: ${Buffer.byteLength(
-    body
-  )}\r\n\r\n`;
-  return `${httpVersion} ${statusCode} ${statusText}\r\n${headers}${body}`;
+  const headers = [
+    `Content-Type: ${contentType}`,
+    `Content-Length: ${Buffer.byteLength(body)}`
+  ]
+  if (contentEncoding) {
+    headers.push(`Content-Encoding: ${contentEncoding}`);
+  }
+  const preHeaders = `${httpVersion} ${statusCode} ${statusText}`;
+  return `${preHeaders}\r\n${headers.join('\r\n')}\r\n\r\n${body}`;
 };
 
 // Main server logic using Node's net module
@@ -66,7 +73,12 @@ const server = net.createServer((socket) => {
     console.log(`Received data: ${dataReceived}`);
     const headers = parseHeaders(dataReceived);
 
-    const { method, path, httpVersion } = headers;
+    const {
+      method,
+      path,
+      httpVersion,
+      'Accept-Encoding': acceptEncoding
+    } = headers;
 
     // Handle POST requests to save files
     if (method === HttpMethod.POST && FILE_REGEX.test(path)) {
@@ -101,6 +113,8 @@ const server = net.createServer((socket) => {
         statusText: HttpStatusText.OK,
         contentType: ContentType.TEXT_PLAIN,
         body: responseBody,
+        contentEncoding:
+          acceptEncoding && acceptEncoding.includes("gzip") ? "gzip" : undefined,
       });
       socket.write(response);
     }

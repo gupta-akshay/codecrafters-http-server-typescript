@@ -63,4 +63,5 @@ export interface ResponseBodyArgs {
   statusCode: HttpStatusCode;
   contentType: ContentType;
   body: string | Buffer;
+  contentEncoding?: string;
 }
